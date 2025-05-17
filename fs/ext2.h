@@ -143,13 +143,18 @@ int write_uint32_le(int fd, uint32_t value, void *buff) {
 }
 
 void write_superblock(int fd) {
-	uint32_t log_blocksize = 2; // block size = 4096
+	void *write_buff = malloc(64);
+	uint32_t blocksize = 4096;
 
-	struct ext2_superblock *sb = {0};
+	struct ext2_superblock *sb = malloc(sizeof(struct ext2_superblock));
 	sb->s_magic = EXT2_SUPER_MAGIC;
+	sb->s_log_block_size = 2; // Block size = 4096
 
 	lseek(fd, 1024, SEEK_SET);
-	write(fd, sb, sizeof(struct ext2_superblock));
+
+	sb->s_blocks_per_group = 512;
+
+	write_uint32_le(fd, sb->s_inodes_count, write_buff);
 }
 
 void create_ext2_filesystem(int fd) {
