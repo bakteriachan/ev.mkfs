@@ -1,2 +1,2 @@
-ev.mkfs: main.c thirdparty/flag.h
-	cc -o ev.mkfs -Ithirdparty main.c
+ev.mkfs: main.c thirdparty/flag.h fs/ext2.h
+	cc -o ev.mkfs -Ithirdparty -Ifs main.c
