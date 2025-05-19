@@ -1,12 +1,5 @@
-#ifndef EXT2_H
-#define EXT2_H
-
-#include <stdint.h>
-#include <unistd.h>
-#include <endian.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
+#ifndef EXT2_DEFS_H
+#define EXT2_DEFS_H
 
 #define EXT2_SUPER_MAGIC 0xEF53
 
@@ -130,58 +123,7 @@ struct ext2_superblock {
 	uint32_t s_first_meta_bg;
 };
 
-int write_uint16_le(int fd, uint16_t value, void *buff) {
-	*(uint16_t*)buff = htole16(value); 
+struct ext2_block_group_descriptor {
+};
 
-	return write(fd, buff, sizeof(uint16_t));
-}
-
-int write_uint32_le(int fd, uint32_t value, void *buff) {
-	*(uint32_t*)buff = htole32(value);
-
-	return write(fd, buff, sizeof(uint32_t));
-}
-
-void write_superblock(int fd) {
-	void *write_buff = malloc(64);
-	uint32_t blocksize = 4096;
-
-	struct ext2_superblock *sb = malloc(sizeof(struct ext2_superblock));
-	sb->s_magic = EXT2_SUPER_MAGIC;
-	sb->s_log_block_size = 2; // Block size = 4096
-
-	lseek(fd, 1024, SEEK_SET);
-
-	sb->s_blocks_per_group = 512;
-
-	write_uint32_le(fd, sb->s_inodes_count, write_buff);
-}
-
-void create_ext2_filesystem(int fd) {
-	lseek(fd, 1024, SEEK_SET);
-
-	struct ext2_superblock *sb = malloc(sizeof(struct ext2_superblock));
-
-	void *uint32_buff = malloc(sizeof(uint32_t));
-	void *uint16_buff = malloc(sizeof(uint16_t));
-
-	sb->s_inodes_count = 2560;
-	if(write_uint32_le(fd, sb->s_inodes_count, uint32_buff) < 0) {
-		int err = errno;
-		fprintf(stderr, "Error writing to device: %s", strerror(err));
-		exit(1);
-	}
-
-	lseek(fd, 1024+56, SEEK_SET);
-
-	if(write_uint16_le(fd, EXT2_SUPER_MAGIC, uint16_buff) < 0) {
-		int err = errno;
-		fprintf(stderr, "Error writing to device: %s", strerror(err));
-		exit(1);
-	}
-
-	free(uint32_buff);
-	free(uint16_buff);
-}
-
-#endif
+#endif /* EXT2_DEFS_H */
