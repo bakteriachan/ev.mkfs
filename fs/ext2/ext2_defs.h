@@ -55,7 +55,7 @@
 
 struct ext2_superblock {
 	uint32_t s_inodes_count;
-	uint32_t s_blocks_count; 
+	uint32_t s_blocks_count;
 	uint32_t s_r_blocks_count;
 	uint32_t s_free_blocks_count;
 	uint32_t s_free_inodes_count;
