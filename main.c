@@ -26,13 +26,7 @@ int main(int argc,char *argv[]) {
 		exit(1);
 	}
 
-	struct stat st;
-	fstat(fd, &st);
-	printf("%d\n", st.st_mode);
-	if(!S_ISBLK(st.st_mode)) {
-		fprintf(stderr, "file is not block device\n");
-		return 0;
-	}
+	
 
 	create_ext2_filesystem(fd);
 

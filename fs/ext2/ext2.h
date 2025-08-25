@@ -25,6 +25,11 @@ int write_uint32_le(int fd, uint32_t value, void *buff) {
 	return write(fd, buff, sizeof(uint32_t));
 }
 
+uint32_t max(uint32_t a, uint32_t b) {
+	if(a > b) return a;
+	return b;
+}
+
 uint32_t superblock_groups_count(struct ext2_superblock* sb) {
 	return sb->s_blocks_count / sb->s_blocks_per_group;
 }
@@ -46,7 +51,7 @@ void write_superblock(int fd, struct ext2_superblock *buff) {
 	sb->s_frags_per_group = sb->s_blocks_per_group;
 
 	uint32_t groups_count = superblock_groups_count(sb);
-	sb->s_inode_size = 256;
+	sb->s_inode_size = 128;
 	sb->s_inodes_per_group = blocksize * 2;
 	sb->s_inodes_count = sb->s_inodes_per_group * groups_count;
 
@@ -81,22 +86,74 @@ void write_superblock(int fd, struct ext2_superblock *buff) {
 	memcpy(buff, sb, sizeof(struct ext2_superblock));
 }
 
-void backup_superblock(int fd, struct ext2_superblock *sb) {
+void backup_superblock(int fd, struct ext2_superblock *sb, struct ext2_block_group_descriptor* group_descriptors) {
 	uint32_t groups_count = superblock_groups_count(sb);
-	for(int i = 1; i <= groups_count; i++) {
+	for(int i = 1; i < groups_count; i++) {
 		if(i == 1 || i%3 == 0 || i%5 == 0 || i%7 == 0) {
+			printf("--backup at %d\n", i);
 			sb->s_block_group_nr = i;
-			lseek(fd, sb->s_blocks_per_group * (1024 << sb->s_log_block_size) * i, SEEK_SET);
+			size_t superblock_position = sb->s_blocks_per_group * (1024 << sb->s_log_block_size) * i;
+			lseek(fd, superblock_position, SEEK_SET);
 			write(fd, sb, sizeof(struct ext2_superblock));
+
+			lseek(fd, superblock_position + (1024 << sb->s_log_block_size), SEEK_SET);
+			write(fd, group_descriptors, sizeof(*group_descriptors) * sizeof(struct ext2_block_group_descriptor));
 		}
 	}
+}
+
+struct ext2_block_group_descriptor* build_block_group_table(int fd, struct ext2_superblock* sb) {
+	uint32_t filesize = sb->s_blocks_count * (1024 << sb->s_log_block_size);
+	uint32_t groups_count = superblock_groups_count(sb);
+	size_t bg_table_size = sizeof(struct ext2_block_group_descriptor) * groups_count;
+	size_t inode_table_size = sb->s_inode_size * sb->s_inodes_per_group;
+	struct ext2_block_group_descriptor *group_descriptors = (struct ext2_block_group_descriptor *)malloc(sizeof(struct ext2_block_group_descriptor) * groups_count);
+
+	struct ext2_block_group_descriptor *bg = malloc(sizeof(struct ext2_block_group_descriptor));
+
+	uint32_t bg_table_blockid = 2;
+	uint32_t bg_tablesize_inblocks = max(bg_table_size / (1024 << sb->s_log_block_size), 1);
+	uint32_t inode_tablesize_inblocks = max(inode_table_size / (1024 << sb->s_log_block_size), 1);
+
+	bg->bg_block_bitmap = bg_table_blockid + bg_tablesize_inblocks + 1;
+	bg->bg_inode_bitmap = bg->bg_block_bitmap + 1;
+	bg->bg_inode_table = bg->bg_inode_bitmap + 1;
+	
+	bg->bg_free_blocks_count = sb->s_blocks_per_group - 3 /* superblock + block_bitmap + inode_bitmap */ - inode_tablesize_inblocks  - bg_tablesize_inblocks;
+	
+	bg->bg_free_inodes_count = sb->s_inodes_per_group;
+	bg->bg_used_dirs_count = 0;
+
+	group_descriptors[0] = *bg;
+
+	for(int i = 1; i < groups_count; ++i) {
+		bg->bg_block_bitmap = (i * sb->s_blocks_per_group) + (i==1||i%3==0||1%5==0|i%7==0) * (bg_tablesize_inblocks + 1);
+		bg->bg_inode_bitmap = bg->bg_block_bitmap + 1;
+		bg->bg_inode_table = bg->bg_inode_bitmap + 1;
+		bg->bg_free_blocks_count = sb->s_blocks_per_group - (i==1||i%3==0||1%5==0|i%7==0) * (bg_tablesize_inblocks + 1) - 2 - inode_tablesize_inblocks;
+
+		group_descriptors[i] = *bg;
+
+		printf("++%d\n", (1024<<sb->s_log_block_size) * (bg->bg_block_bitmap));
+		lseek(fd, (1024<<sb->s_log_block_size) * (bg->bg_block_bitmap), SEEK_SET);
+		int *buff;
+		*buff = 0;
+		for(int i = 0; i < 4096/4; i++)
+			write(fd, buff, sizeof(int));
+	}
+
+	lseek(fd, (1024<<sb->s_log_block_size) * (bg_table_blockid - 1), SEEK_SET);
+	write(fd, group_descriptors, sizeof(struct ext2_block_group_descriptor) * groups_count);
+
+	return group_descriptors;
 }
 
 void create_ext2_filesystem(int fd) {
 	struct ext2_superblock *superblock = malloc(sizeof(struct ext2_superblock));
 
 	write_superblock(fd, superblock);
-	backup_superblock(fd, superblock);
+	struct ext2_block_group_descriptor *group_descriptors = build_block_group_table(fd, superblock);
+	backup_superblock(fd, superblock, group_descriptors);
 
 	free(superblock);
 }
