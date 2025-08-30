@@ -19,6 +19,8 @@ int main(int argc,char *argv[]) {
 		exit(1);
 	}
 
+	printf("%s\n", argv[1]);
+
 	int fd = open(argv[1], O_RDWR);
 	if(fd < 0) {
 		int err = errno;

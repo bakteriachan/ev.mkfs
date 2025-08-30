@@ -55,7 +55,7 @@ void write_superblock(int fd, struct ext2_superblock *buff) {
 	sb->s_inodes_per_group = blocksize * 2;
 	sb->s_inodes_count = sb->s_inodes_per_group * groups_count;
 
-	sb->s_free_blocks_count = sb->s_blocks_count;
+	sb->s_free_blocks_count = 260070;
 	sb->s_free_inodes_count = sb->s_inodes_count;
 
 	sb->s_max_mnt_count = 25;
@@ -90,13 +90,15 @@ void backup_superblock(int fd, struct ext2_superblock *sb, struct ext2_block_gro
 	uint32_t groups_count = superblock_groups_count(sb);
 	for(int i = 1; i < groups_count; i++) {
 		if(i == 1 || i%3 == 0 || i%5 == 0 || i%7 == 0) {
-			printf("--backup at %d\n", i);
-			sb->s_block_group_nr = i;
+			sb->s_block_group_nr = (1024 << sb->s_log_block_size) * i;
 			size_t superblock_position = sb->s_blocks_per_group * (1024 << sb->s_log_block_size) * i;
 			lseek(fd, superblock_position, SEEK_SET);
 			write(fd, sb, sizeof(struct ext2_superblock));
 
 			lseek(fd, superblock_position + (1024 << sb->s_log_block_size), SEEK_SET);
+			for(int i = 0; i < superblock_groups_count(sb); i++) {
+				write(fd, &group_descriptors[i], sizeof(struct ext2_block_group_descriptor));
+			}
 			write(fd, group_descriptors, sizeof(*group_descriptors) * sizeof(struct ext2_block_group_descriptor));
 		}
 	}
@@ -134,16 +136,20 @@ struct ext2_block_group_descriptor* build_block_group_table(int fd, struct ext2_
 
 		group_descriptors[i] = *bg;
 
-		printf("++%d\n", (1024<<sb->s_log_block_size) * (bg->bg_block_bitmap));
+		fprintf(stdout, "%d\n", (1024<<sb->s_log_block_size) * (bg->bg_block_bitmap));
+		fflush(stdout);
+		char zerobuffer[4096];
+		memset(zerobuffer, 0, sizeof(zerobuffer));
 		lseek(fd, (1024<<sb->s_log_block_size) * (bg->bg_block_bitmap), SEEK_SET);
-		int *buff;
-		*buff = 0;
-		for(int i = 0; i < 4096/4; i++)
-			write(fd, buff, sizeof(int));
+		write(fd, zerobuffer, 4096);
 	}
 
+	fprintf(stdout, "%d\n", (1024<<sb->s_log_block_size) * (bg_table_blockid - 1));
+	fflush(stdout);
 	lseek(fd, (1024<<sb->s_log_block_size) * (bg_table_blockid - 1), SEEK_SET);
-	write(fd, group_descriptors, sizeof(struct ext2_block_group_descriptor) * groups_count);
+	for(int i = 0; i < groups_count; i++) {
+		write(fd, &group_descriptors[i], sizeof(struct ext2_block_group_descriptor));
+	}
 
 	return group_descriptors;
 }
